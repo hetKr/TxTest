@@ -1,0 +1,26 @@
+Metadata-Version: 2.4
+Name: txtest
+Version: 1.0.0
+Summary: Windows-first Textual TUI for orchestrating WinRM-based station diagnostics.
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic<3,>=2.8
+Requires-Dist: PyYAML<7,>=6
+Requires-Dist: textual<0.80,>=0.65
+Requires-Dist: Jinja2<4,>=3.1
+Requires-Dist: pypsrp<1,>=0.8
+Requires-Dist: pyspnego<1,>=0.11
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8; extra == "dev"
+Requires-Dist: pytest-asyncio<0.24,>=0.23; extra == "dev"
+
+# TxTest
+
+TxTest is a Windows-first Python 3.12 project for running diagnostic PowerShell test packages against remote Windows hosts over WinRM. The implementation is intentionally practical: it provides validated configuration, script manifests, retry-aware orchestration, JSON reporting, audit logging, persisted queue state, and a minimal Textual TUI.
+
+## Running
+
+```powershell
+python -m pip install -e .[dev]
+python -m txtest
+```

@@ -1,0 +1,2 @@
+[console_scripts]
+txtest = txtest.main:main

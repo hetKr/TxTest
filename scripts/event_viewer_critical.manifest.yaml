@@ -1,0 +1,14 @@
+﻿name: event_viewer_critical
+version: 1.0.0
+schema_version: 1.0.0
+min_app_version: 0.1.0
+description: Collects critical Event Viewer errors from last 24h
+script_file: event_viewer_critical.ps1
+tags:
+  - system
+severity: CRITICAL
+supports_parallel: true
+parameters: []
+conditions: []
+
+

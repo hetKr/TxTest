@@ -1,0 +1,20 @@
+name: disk_free_space
+version: 1.0.0
+schema_version: 1.0.0
+min_app_version: 0.1.0
+description: Checks free space on a disk
+script_file: disk_free_space.ps1
+tags:
+  - system
+severity: WARNING
+supports_parallel: true
+parameters:
+  - name: disk_letter
+    type: string
+    required: true
+    description: Disk letter
+  - name: min_free_gb
+    type: int
+    required: true
+    description: Minimum free space in GB
+conditions: []

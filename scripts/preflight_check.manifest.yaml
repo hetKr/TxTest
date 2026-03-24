@@ -1,0 +1,14 @@
+﻿name: preflight_check
+version: 1.0.0
+schema_version: 1.0.0
+min_app_version: 0.1.0
+description: Checks CPU, RAM and basic WinRM readiness
+script_file: preflight_check.ps1
+tags:
+  - system
+severity: WARNING
+supports_parallel: true
+parameters: []
+conditions: []
+
+

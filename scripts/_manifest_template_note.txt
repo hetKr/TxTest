@@ -1,0 +1,1 @@
+All PowerShell scripts emit exactly one JSON object to stdout and use UTF-8 encoding.

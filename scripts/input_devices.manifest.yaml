@@ -1,0 +1,14 @@
+﻿name: input_devices
+version: 1.0.0
+schema_version: 1.0.0
+min_app_version: 0.1.0
+description: Checks keyboard and mouse presence
+script_file: input_devices.ps1
+tags:
+  - hardware
+severity: INFO
+supports_parallel: true
+parameters: []
+conditions: []
+
+

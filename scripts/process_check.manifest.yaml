@@ -1,0 +1,16 @@
+name: process_check
+version: 1.0.0
+schema_version: 1.0.0
+min_app_version: 0.1.0
+description: Checks if a process is running
+script_file: process_check.ps1
+tags:
+  - system
+severity: WARNING
+supports_parallel: true
+parameters:
+  - name: process_name
+    type: string
+    required: true
+    description: Process name to inspect
+conditions: []

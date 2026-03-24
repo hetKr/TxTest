@@ -1,0 +1,10 @@
+pydantic<3,>=2.8
+PyYAML<7,>=6
+textual<0.80,>=0.65
+Jinja2<4,>=3.1
+pypsrp<1,>=0.8
+pyspnego<1,>=0.11
+
+[dev]
+pytest<9,>=8
+pytest-asyncio<0.24,>=0.23

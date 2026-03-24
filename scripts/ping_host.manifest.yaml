@@ -1,0 +1,16 @@
+name: ping_host
+version: 1.0.0
+schema_version: 1.0.0
+min_app_version: 0.1.0
+description: Pings a target IP or hostname
+script_file: ping_host.ps1
+tags:
+  - network
+severity: INFO
+supports_parallel: true
+parameters:
+  - name: target_ip
+    type: string
+    required: true
+    description: IPv4 address or hostname
+conditions: []

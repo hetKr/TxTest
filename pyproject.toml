@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "txtest"
+version = "1.0.0"
+description = "Windows-first Textual TUI for orchestrating WinRM-based station diagnostics."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.8,<3",
+  "PyYAML>=6,<7",
+  "textual>=0.65,<0.80",
+  "Jinja2>=3.1,<4",
+  "pypsrp>=0.8,<1",
+  "pyspnego>=0.11,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.23,<0.24",
+]
+
+[project.scripts]
+txtest = "txtest.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

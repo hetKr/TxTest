@@ -17,6 +17,13 @@ Jesteś zaawansowanym agentem programistycznym (Senior Python/PowerShell Develop
 - Każdy błąd musi zostać zmapowany na zdefiniowany status domenowy.
 - Każdy zapis raportu i audit logu musi być atomowy.
 - Logi aplikacyjne muszą być strukturyzowane i zawierać `run_id` oraz `correlation_id`.
+- Wszystkie pliki tekstowe systemu muszą używać kodowania UTF-8:
+  - specyfikacje,
+  - YAML,
+  - JSON,
+  - logi,
+  - raporty HTML/CSV,
+  - `stdout` i `stderr` skryptów PowerShell.
 
 ## 3. Architektura Systemu i Asynchroniczność
 - **Aplikacja główna:** Python + Textual, uruchamiana centralnie na serwerze lub stacji operatorskiej.
@@ -46,8 +53,35 @@ Jesteś zaawansowanym agentem programistycznym (Senior Python/PowerShell Develop
   - `tags`.
 - Po niepowodzeniu testu system stosuje politykę:
   - jeśli `continue_on_fail=true`, paczka przechodzi do kolejnego testu,
-  - jeśli `continue_on_fail=false`, paczka kończy się statusem `ABORTED` lub `FAIL_FAST`, mapowanym w raporcie końcowym jako `ABORTED`.
+  - jeśli `continue_on_fail=false`, paczka kończy wykonywanie nowych testów w trybie fail-fast.
 - Retry dotyczy tylko błędów przejściowych infrastruktury, nie błędów logicznych testu.
+- Każdy test musi deklarować `resource_locks`, które pozwalają orkiestratorowi blokować równoległe uruchomienie testów używających tego samego zasobu.
+
+### 4.1. Maszyna Stanów Runu i Testu
+Dozwolone stany techniczne runu:
+- `QUEUED`
+- `PRECHECK_RUNNING`
+- `WAITING_FOR_OPERATOR_CONFIRMATION`
+- `READY`
+- `RUNNING`
+- `CANCELLATION_REQUESTED`
+- `CANCELLING`
+- `FINISHED`
+- `FAILED_TO_START`
+
+Dozwolone stany techniczne testu:
+- `PENDING`
+- `RUNNING`
+- `RETRY_SCHEDULED`
+- `FINISHED`
+- `CANCELLED_TECHNICAL`
+- `FAILED_TO_START`
+
+Wymagania:
+- Run i test muszą przechodzić tylko przez jawnie zdefiniowane przejścia stanów.
+- Stan techniczny służy do orkiestracji i obserwowalności; nie zastępuje domenowego `status`.
+- Po restarcie aplikacji system musi umieć odtworzyć stan `QUEUED`, `RUNNING`, `CANCELLING` oraz rozpoznać runy osierocone.
+- Run osierocony po restarcie musi zostać oznaczony jako wymagający rekonsyliacji i nie może automatycznie uruchamiać nowych testów bez sprawdzenia stanu.
 
 ## 5. Model Statusów Domenowych
 Dozwolone statusy testu i paczki:
@@ -61,6 +95,15 @@ Dozwolone statusy testu i paczki:
 - `UNREACHABLE`
 - `INVALID_OUTPUT`
 
+Dozwolone `termination_reason` dla paczki:
+- `COMPLETED`
+- `FAIL_FAST`
+- `OPERATOR_CANCEL`
+- `PRECHECK_REJECTED`
+- `STARTUP_ERROR`
+- `INFRASTRUCTURE_ERROR`
+- `RECOVERY_AFTER_RESTART`
+
 Zasady interpretacji:
 - `PASS`: test spełnił kryterium.
 - `FAIL`: test wykonał się poprawnie, ale warunek biznesowy nie został spełniony.
@@ -71,6 +114,14 @@ Zasady interpretacji:
 - `AUTH_FAILED`: błąd autoryzacji, np. 401, Kerberos failure, brak uprawnień.
 - `UNREACHABLE`: host nieosiągalny, WinRM niedostępny, błąd sieci.
 - `INVALID_OUTPUT`: skrypt zwrócił niepoprawny JSON lub dane niezgodne ze schematem.
+
+Zasady dla paczki:
+- `final_status` oznacza domenowy wynik końcowy paczki.
+- `termination_reason` opisuje dlaczego wykonywanie paczki zakończyło się w danym miejscu.
+- Anulowanie przez operatora zawsze daje `final_status=ABORTED` oraz `termination_reason=OPERATOR_CANCEL`.
+- Fail-fast po błędzie testu nie może być raportowany jako anulowanie operatora. Jeśli ostatni test zwrócił `FAIL`, paczka kończy się jako `final_status=FAIL` oraz `termination_reason=FAIL_FAST`.
+- Odrzucenie startu przez operatora po ostrzeżeniu pre-flight nie tworzy pełnego runu paczki, ale musi zostać zapisane w audycie jako `PRECHECK_REJECTED`.
+- Problem startowy przed uruchomieniem pierwszego testu musi skutkować `final_status=ERROR` albo `UNREACHABLE`, zależnie od klasy błędu, oraz odpowiednim `termination_reason`.
 
 ## 6. Pre-flight Check i Ochrona Stanowiska
 Przed uruchomieniem paczki system musi wykonać pre-flight check:
@@ -112,11 +163,21 @@ Przed uruchomieniem paczki system musi wykonać pre-flight check:
   - ponowienie całej paczki,
   - `re-run failed only`,
   - `re-run error only`.
+- Retry musi być idempotentne na poziomie orkiestratora:
+  - ta sama próba nie może zostać zarejestrowana dwa razy,
+  - każda próba musi mieć `attempt_no`,
+  - raport końcowy musi pokazywać liczbę prób.
 
 ## 9. Kontrakt Komunikacyjny Python <-> PowerShell
 - Każdy skrypt `.ps1` przyjmuje parametry wejściowe zgodnie z własnym manifestem.
 - Każdy skrypt musi zwrócić dokładnie jeden obiekt JSON na `stdout`.
 - Zabronione jest mieszanie logów tekstowych z JSON-em na `stdout`. Diagnostyka pomocnicza może trafiać na `stderr`, ale nie może psuć parsowania.
+- Skrypt musi kończyć się kontrolowanym `exit_code`:
+  - `0` dla poprawnego wykonania logiki skryptu niezależnie od tego, czy wynik domenowy to `PASS` czy `FAIL`,
+  - różnym od `0` tylko dla błędu wykonania skryptu lub środowiska uruchomieniowego.
+- `stdout` i `stderr` muszą być kodowane w UTF-8.
+- System musi definiować maksymalny rozmiar bufora `stdout` i `stderr`; jego przekroczenie musi zostać zmapowane na `INVALID_OUTPUT` albo `ERROR` zgodnie z klasą problemu.
+- Skrypt nie może emitować artefaktów binarnych na `stdout`. Artefakty muszą być zapisane jako pliki i zwrócone przez JSON jako ścieżki lub metadane artefaktów.
 - Minimalny kontrakt wyniku testu:
 
 ```json
@@ -138,7 +199,9 @@ Przed uruchomieniem paczki system musi wykonać pre-flight check:
     "hostname": "ST01",
     "ip": "192.168.1.15"
   },
-  "script_version": "1.0.0"
+  "script_version": "1.0.0",
+  "attempt_no": 1,
+  "artifacts": []
 }
 ```
 
@@ -150,6 +213,9 @@ Wymagania:
 - `severity` musi przyjmować wartości `CRITICAL`, `WARNING` albo `INFO`.
 - `details` musi być obiektem JSON z dodatkowymi danymi diagnostycznymi.
 - `script_version` jest obowiązkowe.
+- `attempt_no` musi być liczbą całkowitą >= 1.
+- `artifacts` musi być tablicą metadanych artefaktów i może być puste.
+- Jeśli `exit_code != 0`, a JSON nie został zwrócony, wynik musi zostać zmapowany na `ERROR`, `TIMEOUT`, `AUTH_FAILED` albo `UNREACHABLE` według mappera błędów.
 
 Jeśli JSON jest niepoprawny lub niezgodny ze schematem, wynik musi zostać oznaczony jako `INVALID_OUTPUT`.
 
@@ -186,7 +252,16 @@ Wymagania walidacyjne:
   - zgodność wersji schematu.
 - Konfiguracja musi mieć pole `schema_version`.
 - System ma wspierać migracje starszych wersji configu.
+- Migracja configu musi być jawna, wersjonowana i odwracalna na poziomie backupu pliku wejściowego.
 - Rekomendowane narzędzia: `pydantic` lub `jsonschema`.
+
+Wymagania kompatybilności wersji:
+- Każdy config i manifest musi deklarować własny `schema_version`.
+- Aplikacja musi deklarować wspierany zakres wersji schematu.
+- Jeśli wersja configu lub manifestu jest nowsza niż wspierana przez aplikację, system nie może uruchomić testów i musi zgłosić precyzyjny błąd kompatybilności.
+- Jeśli wersja jest starsza, system może:
+  - uruchomić migrację,
+  - albo odmówić startu z informacją, że migracja jest wymagana.
 
 ## 12. Manifesty Skryptów i Standaryzacja Parametrów
 Każdy skrypt testowy musi mieć manifest opisujący metadane i parametry. Manifest może być YAML lub JSON.
@@ -196,6 +271,8 @@ Minimalna struktura manifestu:
 ```yaml
 name: disk_free_space
 version: 1.0.0
+schema_version: 1.0.0
+min_app_version: 1.0.0
 description: Sprawdza wolne miejsce na dysku
 tags:
   - system
@@ -219,6 +296,11 @@ Wymagania:
 - UI powinno generować formularz dynamicznie na podstawie manifestu.
 - Ten sam skrypt musi dać się wykorzystać w wielu paczkach z różnymi parametrami.
 - Manifesty muszą być wersjonowane i walidowane.
+- Manifest musi jawnie wskazywać:
+  - nazwę pliku skryptu,
+  - wersję schematu manifestu,
+  - minimalną wersję aplikacji wymaganą do obsługi manifestu.
+- Niekompatybilny manifest nie może zostać załadowany do katalogu testów aktywnych.
 
 ## 13. Tagi, Ważność i Warunki Uruchamiania
 - Każdy test musi wspierać tagi, np.:
@@ -270,6 +352,7 @@ Minimalna struktura raportu zbiorczego:
   "finished_at_utc": "2026-03-23T10:21:44Z",
   "duration_ms": 89000,
   "final_status": "FAIL",
+  "termination_reason": "FAIL_FAST",
   "forced_after_preflight_warning": false,
   "environment_snapshot": {
     "hostname": "ST01",
@@ -280,20 +363,26 @@ Minimalna struktura raportu zbiorczego:
   "results": [],
   "summary": {
     "passed": 5,
-    "failed": 1,
-    "skipped": 0,
-    "errors": 1,
-    "timeouts": 0
-  },
-  "event_log": []
+      "failed": 1,
+      "skipped": 0,
+      "errors": 1,
+      "timeouts": 0
+    },
+  "event_log": [],
+  "attempt_summary": {
+    "total_attempts": 8,
+    "retried_tests": 2
+  }
 }
 ```
 
 Wymagania:
 - Raport musi zawierać wszystkie wyniki testów.
 - Raport musi zawierać końcowy status paczki.
+- Raport musi zawierać `termination_reason`.
 - Raport musi zawierać informację, czy operator wymusił start mimo ostrzeżenia pre-flight.
 - Raport musi zawierać snapshot środowiska stanowiska.
+- Raport musi zawierać informację o próbach wykonania testów i retry.
 - Historia raportów musi dać się filtrować po:
   - stanowisku,
   - paczce,
@@ -333,6 +422,7 @@ Każdy wpis audytu musi zawierać co najmniej:
 - Jeśli stanowisko jest już zajęte, UI ma pokazać status `stanowisko zajete` i zablokować równoległy start drugiej paczki na tym samym hoście.
 - Kolejka musi zachować kolejność FIFO, chyba że później zostanie jawnie dodany priorytet.
 - Informacja o stanie kolejki musi być widoczna w UI.
+- Stan kolejki i aktywnych runów musi być trwale zapisany, tak aby restart aplikacji nie powodował utraty informacji o runach oczekujących i uruchomionych.
 
 ## 18. Tryb Dry-Run
 System musi wspierać tryb `dry-run`, który:
@@ -415,7 +505,7 @@ Zbuduj skrypty `.ps1` dla:
 - Każdy bugfix dotyczący parsera, raportowania, cancel lub statusów musi mieć test regresyjny.
 
 ## 24. Środowisko Testowe
-- Adres IP stanowiska testowego: `[TUTAJ_WPISZ_ADRES_IP]`
+- Adres IP stanowiska testowego: `10.122.7.119`
 - Agent ma weryfikować warstwę komunikacji WinRM na powyższym adresie, ale implementacja musi umożliwiać pełne testy lokalne z mockami bez zależności od żywego hosta.
 
 ## 25. Kolejność Realizacji
